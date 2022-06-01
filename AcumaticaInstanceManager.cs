@@ -20,12 +20,72 @@ namespace AcumaticaInstanceManager
 {
     internal class AcumaticaInstanceManager
     {
-        public AcumaticaInstanceManager()
+        private static readonly object _lock = new object();
+        private const string CompanyPrefixes = "ABC";
+        private static int tenantsAmount;
+        Settings Settings;
+        public AcumaticaInstanceManager(Settings settings)
         {
-      
+            Settings = settings;
+            tenantsAmount = 2;
         }
 
-       
+        internal static string GetLatestBuild()
+        {
+            IEnumerable<string> buildList = ListBuilds().OrderBy(b => b);
+            return buildList.Count() > 0 ? buildList.Last() : null ;
+        }
+
+        internal static string GetLatestBuildForVersion(string majorVersion)
+        {
+            IEnumerable<string> buildList = ListBuilds(majorVersion).OrderBy(r => r);
+            return buildList.Count() > 0 ? buildList.Last() : null;
+        }
+
+        internal void InstallAcumatica(string build)
+        {
+            string link = GetLinkToMSI(build);
+            string downloadPath = Settings.DownloadPath;
+            string downloadFilePath = Path.Combine(downloadPath, "AcumaticaERPInstall.msi");
+            string acumaticaACPath = Path.Combine(Settings.ExtractPath, @"Acumatica ERP\Data\ac.exe");
+
+            DirectoryInfo currentDownload = Directory.CreateDirectory(downloadPath);
+            WebClient webClient = new WebClient();
+
+            Console.WriteLine("Start to Download");
+            lock (_lock)
+            {
+                webClient.DownloadFile(link, downloadFilePath);
+            }
+            Console.WriteLine("MSI file downloaded " + downloadFilePath);
+
+            Directory.CreateDirectory(Settings.ExtractPath);
+            string command = string.Format(@"/c msiexec /a {0} /qn TARGETDIR={1}", downloadFilePath, Settings.ExtractPath);
+            Console.WriteLine("Extracting MSI package");
+            ExecuteCommand(command);
+            if (File.Exists(acumaticaACPath))
+            {
+                string companies = "";
+                //Let's install multi tenant instance with different data template
+                for (int i = 0; i <= tenantsAmount; i++)
+                {
+                    companies += string.Format(" -company:\"CompanyID={0};cn=Company{1};CompanyType={2};ParentID=1;Visible=Yes;\"", (i + 2).ToString(), CompanyPrefixes[i], i == 0 ? "F300" : "SalesDemo");
+                }
+                Console.WriteLine($"Prepaire for the instance {Settings.InstanceName} deployment");
+
+                //Remove the site if was already deployed
+
+                string createNewInstanceCommand = string.Format("-configmode:\"NewInstance\" -dbsrvname:\"{0}\" -dbname:\"{2}\" -dbnew:\"True\" -dbsrvwinauth:\"Yes\" {1} -iname:\"{2}\" -svirtdir:\"{2}\" -h:\"{3}\" -w:\"Default Web Site\" -po:\"{2}\" -a:\"AnonymousUser\" -op:\"Quiet\"", Settings.DBServerName, companies, Settings.InstanceName, Path.Combine(Settings.SitesPath, Settings.InstanceName));
+                //When not WinAuth for SQL Server
+                //string createNewInstanceCommand = string.Format("-configmode:\"NewInstance\" -dbsrvname:\"{0}\" -dbname:\"{2}\" -dbnew:\"True\" -dbwinauth:\"No\"  -dbnewuser:\"No\" -dbuser:\"{4}\" -dbpass:\"{5}\" {1} -iname:\"{2}\" -svirtdir:\"{2}\" -h:\"{3}\" -w:\"Default Web Site\" -po:\"{2}\" -a:\"AnonymousUser\" -op:\"Quiet\"", Settings.DBServerName, companies, Settings.InstanceName, Path.Combine(Settings.SitesPath, Settings.InstanceName), DBUser, DBPass);
+
+                Console.WriteLine("Deploying Acumatica Instance...");
+                ExecuteCommand(createNewInstanceCommand, acumaticaACPath);
+                Console.WriteLine($"Instance {Settings.InstanceName} has been set");
+            }
+            //To add removal procedure to clear up downloaded and extracted files.
+        }
+
         internal static List<string> ListBuilds(string majorVersion = null)
         {
             Regex MajorVersion20Plus = new Regex(@"/2[0-9].[1-2]/", RegexOptions.IgnoreCase);
@@ -36,6 +96,7 @@ namespace AcumaticaInstanceManager
                 {
                     BucketName = "acumatica-builds",
                     MaxKeys = 1000,
+                    //if version specified only non-beta builds will be taken (as betas and previews are in build/preview/ bucket)
                     Prefix = string.IsNullOrEmpty(majorVersion) ? "" : "builds/" + majorVersion
                 };
                 ListObjectsV2Response response;
@@ -101,6 +162,22 @@ namespace AcumaticaInstanceManager
             return link;
         }
 
-      
+        private static void ExecuteCommand(string argument, string command = "cmd.exe")
+        {
+            System.Diagnostics.Process p = new Process();
+            ProcessStartInfo startInfo = new ProcessStartInfo();
+            startInfo.FileName = command;
+            startInfo.Arguments = argument;
+            p.StartInfo.RedirectStandardOutput = true;
+            p.StartInfo.RedirectStandardInput = true;
+            p.StartInfo.CreateNoWindow = true;
+            //startInfo.WindowStyle = ProcessWindowStyle.Hidden;
+            p.StartInfo = startInfo;
+            p.Start();
+            p.WaitForExit();
+            p.Close();
+        }
+
+    
     }
 }
