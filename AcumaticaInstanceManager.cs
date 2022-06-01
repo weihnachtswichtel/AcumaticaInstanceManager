@@ -22,9 +22,10 @@ namespace AcumaticaInstanceManager
     {
         public AcumaticaInstanceManager()
         {
-
+      
         }
 
+       
         internal static List<string> ListBuilds(string majorVersion = null)
         {
             Regex MajorVersion20Plus = new Regex(@"/2[0-9].[1-2]/", RegexOptions.IgnoreCase);
@@ -51,7 +52,55 @@ namespace AcumaticaInstanceManager
 
                 } while (response.IsTruncated);
             }
-            return listOfBuilds;                        
+            return listOfBuilds;
         }
+
+
+        internal static string GetLinkToMSI(string build)
+        {
+            //It might be better to use S3 interfaces, as some late betas are still in preview folder but having GA build
+            string link;
+            string majorVersion = build.Substring(0, 4);
+            if (build[4] == '9') {
+                majorVersion = build.Substring(0, 4).Remove(3, 1).Insert(3, (Convert.ToInt16(char.GetNumericValue(build[3])) + 1).ToString());
+                link = $"http://acumatica-builds.s3.amazonaws.com/builds/preview/{majorVersion}/{build}/AcumaticaERP/AcumaticaERPInstall.msi";
+            }
+            else {
+                link = $"http://acumatica-builds.s3.amazonaws.com/builds/{majorVersion}/{build}/AcumaticaERP/AcumaticaERPInstall.msi";
+            }
+            //Check link
+            HttpWebResponse response = null;
+            var request = (HttpWebRequest)WebRequest.Create(link);
+            request.Method = "HEAD";
+            try
+            {
+                response = (HttpWebResponse)request.GetResponse();
+            }
+            catch (WebException ex)
+            {
+                if (ex.Status == WebExceptionStatus.ProtocolError &&
+                     ex.Response != null)
+                {
+                    var resp = (HttpWebResponse)ex.Response;
+                    if (resp.StatusCode == HttpStatusCode.NotFound)
+                    {
+                        link = null;
+                    }
+                }
+            }
+            finally
+            {
+                if (response != null)
+                {
+                    if (response.StatusCode != HttpStatusCode.OK) {
+                        link = null;
+                    }
+                    response.Close();
+                }
+            }
+            return link;
+        }
+
+      
     }
 }
