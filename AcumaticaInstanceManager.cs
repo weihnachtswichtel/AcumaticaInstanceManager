@@ -94,6 +94,26 @@ namespace AcumaticaInstanceManager
             }
         }
 
+        internal void RemoveAcumatica()
+        {
+            if (ClearInstance(Settings.SitesPath, Settings.InstanceName, new DBHelper(Settings.DBServerName, Settings.InstanceName)))
+            {
+                Console.WriteLine($"{Settings.InstanceName} instance has been removed");
+            }
+            else {
+                Console.WriteLine($"{Settings.InstanceName} instance could not be removed");
+            }
+        }
+
+        internal static bool IsApplilcationExist(string instanceName)
+        {
+            using (ServerManager mgr = new ServerManager())
+            {
+                Application app = mgr.Sites["Default Web Site"].Applications["/"+instanceName];
+                return app != null;
+            }
+        }
+
         internal static List<string> ListBuilds(string majorVersion = null)
         {
             Regex MajorVersion20Plus = new Regex(@"/2[0-9].[1-2]/", RegexOptions.IgnoreCase);

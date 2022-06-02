@@ -33,20 +33,25 @@ namespace AcumaticaInstanceManager
                 {
                     string build = string.Empty;
                     //get last build of latest version, including beta and preview if no parameter specified
-                    if (args.Length == installAcumaticaCommandIndex + 1) {
+                    if (args.Length == installAcumaticaCommandIndex + 1)
+                    {
                         build = AcumaticaInstanceManager.GetLatestBuild();
                     }
-                    else {
+                    else
+                    {
                         string paramBuildOrVersion = args[installAcumaticaCommandIndex + 1].Replace(" ", string.Empty);
                         //check if build specified
-                        if (Build20Plus.Match(paramBuildOrVersion).Success) {
+                        if (Build20Plus.Match(paramBuildOrVersion).Success)
+                        {
                             build = Build20Plus.Match(paramBuildOrVersion).Value;
                         }
                         //check if major version specified and get latest build for this verison excludign beta
-                        else if (MajorVersion20Plus.Match(paramBuildOrVersion.ToUpper().Replace("R", ".")).Success){
+                        else if (MajorVersion20Plus.Match(paramBuildOrVersion.ToUpper().Replace("R", ".")).Success)
+                        {
                             build = AcumaticaInstanceManager.GetLatestBuildForVersion(MajorVersion20Plus.Match(paramBuildOrVersion.ToUpper().Replace("R", ".")).Value);
                         }
-                        else{
+                        else
+                        {
                             Console.WriteLine($"Specified value {args[installAcumaticaCommandIndex + 1]} neither Acumatica build, nor Version");
                         }
                     }
@@ -54,15 +59,46 @@ namespace AcumaticaInstanceManager
                     {
                         Console.WriteLine("No build could be found");
                     }
-                    else {
-                        Console.WriteLine(String.Format("Build {0} of Acumatica ERP 20{1} is taken for further installation", 
-                                                            build.Contains('|') ? build.Split('|')[1] : build, 
+                    else
+                    {
+                        Console.WriteLine(String.Format("Build {0} of Acumatica ERP 20{1} is taken for further installation",
+                                                            build.Contains('|') ? build.Split('|')[1] : build,
                                                             build.Contains('|') ? build.Split('|')[0].Replace(".", " R") : build.Substring(0, 4).Replace(".", " R")));
                         InstallAcumaticaERP(build.Contains('|') ? build.Split('|')[1] : build);
                     }
-                    Console.ReadLine();
+                    return;
+                }
+                int removeAcumaticaCommandIndex = Array.IndexOf(args, "--remove");
+                if (removeAcumaticaCommandIndex >= 0)
+                {
+                    if (args.Length > removeAcumaticaCommandIndex + 1)
+                    {
+                        string instanceName = args[removeAcumaticaCommandIndex + 1];
+                        if (AcumaticaInstanceManager.IsApplilcationExist(instanceName))
+                        {
+                            Console.WriteLine($"{instanceName} found, Deleting");
+                            Settings settings = new Settings
+                            {
+                                InstanceName = instanceName,
+                                SitesPath = @"C:\Acumatica\",
+                                DBServerName = "MSK-LT-75"
+                            };
+                            AcumaticaInstanceManager instanceManager = new AcumaticaInstanceManager(settings);
+                            instanceManager.RemoveAcumatica();
+                        }
+                        else
+                        {
+                            Console.WriteLine($"No {instanceName} application found");
+                        }
+                    }
+                    else
+                    {
+                        Console.WriteLine("Instance name should be specified");
+                    }
                 }
             }
+            else{ Console.WriteLine("Instance name should be specified"); }
+            Console.ReadLine();
         }
 
         private static void InstallAcumaticaERP(string build)
@@ -82,7 +118,6 @@ namespace AcumaticaInstanceManager
             AcumaticaInstanceManager instanceManager = new AcumaticaInstanceManager(settings);
             instanceManager.InstallAcumatica(build);
         }
-
 
         //Getting the default Download derectory
         static string GetDefaultDownloadFolderPath() {

@@ -29,7 +29,7 @@ namespace AcumaticaInstanceManager
                     connection.Open();
                     if (checkCommand.ExecuteScalar() != DBNull.Value)
                     {
-                        string dropCommandText = @"ALTER DATABASE " + dbName + @" SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+                        string dropCommandText = @"ALTER DATABASE [" + dbName + @"] SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
                         DROP DATABASE [" + dbName + "]";
                         SqlCommand dropCommand = new SqlCommand(dropCommandText, connection);
                         dropCommand.ExecuteNonQuery();
