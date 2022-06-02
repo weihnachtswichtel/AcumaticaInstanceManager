@@ -81,7 +81,6 @@ namespace AcumaticaInstanceManager
             };
             AcumaticaInstanceManager instanceManager = new AcumaticaInstanceManager(settings);
             instanceManager.InstallAcumatica(build);
-
         }
 
 

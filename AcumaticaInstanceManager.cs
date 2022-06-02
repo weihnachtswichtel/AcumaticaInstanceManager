@@ -42,7 +42,7 @@ namespace AcumaticaInstanceManager
             return buildList.Count() > 0 ? buildList.Last() : null;
         }
 
-        internal void InstallAcumatica(string build)
+        internal void InstallAcumatica(string build, DBHelper dBHelper = null)
         {
             string link = GetLinkToMSI(build);
             string downloadPath = Settings.DownloadPath;
@@ -51,6 +51,9 @@ namespace AcumaticaInstanceManager
 
             DirectoryInfo currentDownload = Directory.CreateDirectory(downloadPath);
             WebClient webClient = new WebClient();
+            
+            Console.WriteLine($"Removing old Acumatica instance {Settings.InstanceName} if exists");
+            if (!ClearInstance(Settings.SitesPath, Settings.InstanceName, dBHelper)){Console.WriteLine($"Could not remove old instance {Settings.InstanceName}"); return; }
 
             Console.WriteLine("Start to Download");
             lock (_lock)
@@ -83,7 +86,12 @@ namespace AcumaticaInstanceManager
                 ExecuteCommand(createNewInstanceCommand, acumaticaACPath);
                 Console.WriteLine($"Instance {Settings.InstanceName} has been set");
             }
-            //To add removal procedure to clear up downloaded and extracted files.
+            //Removal procedure to clear up downloads. Extracted files are nested and will be remvoed as well.
+            RemovePath(downloadPath, 5);
+            if (dBHelper != null) {
+                //Not to require passwoed change after installation for admin user. It will remain 'setup'. Otherwise it won't be possible to login via API
+                dBHelper.setPasswordChangeRequired(false);
+            }
         }
 
         internal static List<string> ListBuilds(string majorVersion = null)
@@ -162,6 +170,138 @@ namespace AcumaticaInstanceManager
             return link;
         }
 
+        static bool ClearInstance(string sitePath, string instanceName, DBHelper dBHelper = null)
+        {
+            string path = Path.Combine(sitePath, instanceName);
+            Console.WriteLine("Removing Registry Record...");
+            DeleteRegistryRecord(Path.GetFileName(path));
+            if (dBHelper != null)
+            {
+                Console.WriteLine("Removing Database if exists...");
+                dBHelper.DropDB();
+            }
+            else { Console.WriteLine("DB handler not inialized. DB will be left"); }
+            Console.WriteLine("Removing Virtual Directory...");
+            DeleteApp(Path.GetFileName(path));
+            Console.WriteLine("Removing App Pool...");
+            DeleteAppPool(Path.GetFileName(path));
+            Console.WriteLine("Removing Site if exists...");
+            lock (_lock)
+            {
+                return RemovePath(path, 5) &&
+                       RemovePath(Path.Combine(sitePath, "Customization", instanceName), 5) &&
+                       RemovePath(Path.Combine(sitePath, "Snapshots", instanceName), 5) &&
+                       RemovePath(Path.Combine(sitePath, "TemporaryAspFiles", instanceName), 5);
+            }
+        }
+
+        static bool RemovePath(string path, int max, int current = 0)
+        {
+            if (current < max)
+            {
+                try
+                {
+                    if (Directory.Exists(path))
+                    {
+                        Directory.EnumerateFiles(path).ToList().ForEach(file => System.IO.File.Delete(file));
+                        Directory.EnumerateDirectories(path).ToList().ForEach(directory => Directory.Delete(directory, true));
+                        Directory.Delete(path, true);
+                    }
+                    return true;
+                }
+                catch
+                {
+                    Console.WriteLine($"Could not remove the directory from {current + 1} time/s");
+                    Thread.Sleep(2000);
+                    return RemovePath(path, max, current + 1);
+                }
+            }
+            else
+            {
+                return false;
+            }
+        }
+
+        private static void DeleteApp(string virtualDirectory)
+        {
+            using (ServerManager mgr = new ServerManager())
+            {
+                List<string> appNames = GetVirtualDirectoriesForApplication(virtualDirectory);
+                foreach (string appName in appNames)
+                {
+                    Application app = mgr.Sites["Default Web Site"].Applications[appName];
+                    if (app == null)
+                        continue;
+                    mgr.Sites["Default Web Site"].Applications.Remove(app);
+                    mgr.CommitChanges();
+                }
+            }
+        }
+
+        internal void RecycleAppPool(string poolName)
+        {
+            using (ServerManager mgr = new ServerManager())
+            {
+                ApplicationPool appPool = mgr.ApplicationPools[poolName];
+                if (appPool == null)
+                    return;
+                appPool.Recycle();
+            }
+        }
+        private static void DeleteAppPool(string poolName)
+        {
+            using (ServerManager mgr = new ServerManager())
+            {
+                ApplicationPool appPool = mgr.ApplicationPools[poolName];
+                if (appPool == null)
+                    return;
+
+                ApplicationPoolCollection appColl = mgr.ApplicationPools;
+                appColl.Remove(appPool);
+                mgr.CommitChanges();
+            }
+        }
+
+        private static List<string> GetVirtualDirectoriesForApplication(string appName)
+        { 
+            ServerManager manager = new ServerManager();
+            Site defaultSite = manager.Sites["Default Web Site"];
+            List<string> virtualDirectories = new List<string>();
+            string appNameInPath;
+            foreach (Application app in defaultSite.Applications)
+            {
+                foreach (VirtualDirectory vd in app.VirtualDirectories)
+                {
+                    appNameInPath = Path.GetFileName(Path.GetFullPath(vd.PhysicalPath).TrimEnd(Path.DirectorySeparatorChar)).ToUpper();
+                    if (appNameInPath == appName.ToUpper())
+                    {
+                        virtualDirectories.Add(app.Path);
+                    }
+                }
+            }
+            return virtualDirectories;
+        }
+
+        private static void DeleteRegistryRecord(string instanceRecord)
+        {
+            string keyName = @"SOFTWARE\ACUMATICA ERP";
+            using (RegistryKey key64 = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine,
+                                            RegistryView.Registry64))
+            {
+                using (RegistryKey subKey64 = key64.OpenSubKey(keyName, true))
+                {
+                    if (subKey64.OpenSubKey(instanceRecord) != null)
+                    {
+                        subKey64.DeleteSubKeyTree(instanceRecord);
+                    }
+                    else
+                    {
+                        Console.WriteLine("No Registry record found for " + instanceRecord);
+                    }
+                }
+            }
+        }
+
         private static void ExecuteCommand(string argument, string command = "cmd.exe")
         {
             System.Diagnostics.Process p = new Process();
@@ -177,7 +317,5 @@ namespace AcumaticaInstanceManager
             p.WaitForExit();
             p.Close();
         }
-
-    
     }
 }
