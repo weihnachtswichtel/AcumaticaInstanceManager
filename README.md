@@ -23,3 +23,25 @@ If not specified, all available builds for the versions after 20 Rx will be list
 Both, Acumatica version and build are optional but only one should be used. If no optional parameters specified, the latest available build for the latest major release will be taken.
 Optional Major Acumatica ERP version parameter could be specified as 21.2, 21R2 or 2021R2. If specified the latest build of this version will be taken. Beta builds would be ignored.
 If Acumatica ERP build parameter specified, the specified build will be taked for deployment
+
+### Remove Acumatica ERP
+
+	--remove <InstanceName> 
+
+This command removes the Acumatica ERP instance that is specified as the required parameter.
+
+**Important**: Only use it for those sites that were deployed by this tool or after review/change of the settings and code.
+
+The command will remove based on the InstanceName **socalled** following items:
+
+- Site Files
+- Database (if set)
+- IIS Application
+- IIS Pool
+- RegistryRecords
+- Temp Files
+- Customizations Files
+- Snapshots
+	
+	
+	
